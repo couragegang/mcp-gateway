@@ -2,11 +2,14 @@ package com.couragegang.mcp.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 import com.couragegang.mcp.api.dto.McpModels.InstallationCreateRequest;
+import com.couragegang.mcp.integration.AuditClient;
 import com.couragegang.mcp.integration.NotionHealthProbe;
 import com.couragegang.mcp.integration.PolicyPackApplier;
+import com.couragegang.mcp.integration.SecretsClient;
 import com.couragegang.mcp.repo.CatalogRepository;
 import com.couragegang.mcp.repo.InstallationRepository;
 import java.time.Instant;
@@ -30,7 +33,16 @@ class InstallationServiceTest {
     InstallationRepository installations;
 
     @Mock
+    ConnectionFormSplitter formSplitter;
+
+    @Mock
+    SecretsClient secrets;
+
+    @Mock
     PolicyPackApplier policyPack;
+
+    @Mock
+    AuditClient audit;
 
     @Mock
     NotionHealthProbe notionProbe;
@@ -42,15 +54,22 @@ class InstallationServiceTest {
 
     @BeforeEach
     void setUp() {
-        svc = new InstallationService(catalog, installations, policyPack, notionProbe);
+        svc = new InstallationService(
+                catalog, installations, formSplitter, secrets, policyPack, audit, notionProbe);
     }
 
     @Test
     void createInstallation() throws Exception {
+        var schema = Map.<String, Object>of("fields", List.of());
         when(catalog.findPublished("notion"))
                 .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
-                        "notion", "Notion", "d", Map.of(), 1, Map.of("rules", List.of()))));
+                        "notion", "Notion", "d", schema, 1, Map.of("rules", List.of()))));
         when(installations.listByWorkspace(wsId)).thenReturn(List.of());
+        when(formSplitter.split(eq(schema), any()))
+                .thenReturn(new ConnectionFormSplitter.SplitResult(
+                        Map.of("integration_token", "secret_x"), Map.of()));
+        when(secrets.storeCredentials(any(), any(), eq("notion"), any()))
+                .thenReturn(Optional.of("secrets:" + UUID.randomUUID()));
         var instId = UUID.randomUUID();
         when(installations.insert(any(), any(), any(), any(), any(), any(), any())).thenReturn(instId);
         when(policyPack.applyInstallPack(any(), any(), any(), any(), any(Integer.class), any(), any()))
@@ -59,7 +78,12 @@ class InstallationServiceTest {
                 .thenReturn(Optional.of(new InstallationRepository.InstallationRow(
                         instId, wsId, "notion", "Notion", "active", Instant.now())));
 
-        var result = svc.create(orgId, wsId, new InstallationCreateRequest("notion", "Notion", Map.of("integration_token", "secret_x")), null);
+        var result =
+                svc.create(
+                        orgId,
+                        wsId,
+                        new InstallationCreateRequest("notion", "Notion", Map.of("integration_token", "secret_x")),
+                        null);
 
         assertThat(result.connectorKey()).isEqualTo("notion");
     }

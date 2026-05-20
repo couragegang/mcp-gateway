@@ -38,3 +38,11 @@ mcp:
     enabled: ${POLICY_SERVICE_ENABLED:true}
     base-url: ${POLICY_SERVICE_URL:http://localhost:8085/v1/policy}
     internal-api-key: ${POLICY_INTERNAL_API_KEY:dev-internal-key}
+  secrets-service:
+    enabled: ${SECRETS_SERVICE_ENABLED:true}
+    base-url: ${SECRETS_SERVICE_URL:http://localhost:8087/v1/secrets}
+    internal-api-key: ${SECRETS_INTERNAL_API_KEY:dev-internal-key}
+  audit-service:
+    enabled: ${AUDIT_SERVICE_ENABLED:true}
+    base-url: ${AUDIT_SERVICE_URL:http://localhost:8086/v1/audit}
+    internal-api-key: ${AUDIT_INTERNAL_API_KEY:dev-internal-key}

@@ -5,8 +5,10 @@ import com.couragegang.mcp.api.dto.McpModels.Installation;
 import com.couragegang.mcp.api.dto.McpModels.InstallationCreateRequest;
 import com.couragegang.mcp.api.dto.McpModels.InstallationListResponse;
 import com.couragegang.mcp.error.McpApiException;
+import com.couragegang.mcp.integration.AuditClient;
 import com.couragegang.mcp.integration.NotionHealthProbe;
 import com.couragegang.mcp.integration.PolicyPackApplier;
+import com.couragegang.mcp.integration.SecretsClient;
 import com.couragegang.mcp.repo.CatalogRepository;
 import com.couragegang.mcp.repo.InstallationRepository;
 import io.micronaut.http.HttpStatus;
@@ -22,17 +24,26 @@ public final class InstallationService {
 
     private final CatalogRepository catalog;
     private final InstallationRepository installations;
+    private final ConnectionFormSplitter formSplitter;
+    private final SecretsClient secrets;
     private final PolicyPackApplier policyPack;
+    private final AuditClient audit;
     private final NotionHealthProbe notionProbe;
 
     public InstallationService(
             CatalogRepository catalog,
             InstallationRepository installations,
+            ConnectionFormSplitter formSplitter,
+            SecretsClient secrets,
             PolicyPackApplier policyPack,
+            AuditClient audit,
             NotionHealthProbe notionProbe) {
         this.catalog = catalog;
         this.installations = installations;
+        this.formSplitter = formSplitter;
+        this.secrets = secrets;
         this.policyPack = policyPack;
+        this.audit = audit;
         this.notionProbe = notionProbe;
     }
 
@@ -50,24 +61,33 @@ public final class InstallationService {
     public Installation create(
             UUID orgId, UUID workspaceId, InstallationCreateRequest req, @Nullable UUID userId) {
         UUID installationId = null;
+        String secretRef = null;
         try {
             var catalogRow = catalog.findPublished(req.connectorKey()).orElseThrow(() -> notFound("connector not found"));
             if (installations.listByWorkspace(workspaceId).stream()
                     .anyMatch(i -> i.connectorKey().equals(req.connectorKey()))) {
                 throw new McpApiException(HttpStatus.CONFLICT, "CONFLICT", "connector already installed");
             }
+            var split = formSplitter.split(catalogRow.connectionFormSchema(), req.form());
+            if (!split.secrets().isEmpty()) {
+                secretRef =
+                        secrets.storeCredentials(orgId, workspaceId, req.connectorKey(), split.secrets())
+                                .orElseThrow(() -> new McpApiException(
+                                        HttpStatus.BAD_GATEWAY, "secrets_store_failed", "failed to store credentials"));
+            } else {
+                secretRef = "local:none";
+            }
             var label = req.displayLabel() != null && !req.displayLabel().isBlank()
                     ? req.displayLabel().trim()
                     : req.connectorKey();
-            var config = new HashMap<>(req.form());
             installationId =
                     installations.insert(
                             orgId,
                             workspaceId,
                             req.connectorKey(),
                             label,
-                            "local:pending",
-                            config,
+                            secretRef,
+                            split.config(),
                             userId);
             installations.updateStatus(installationId, "active");
             if (!policyPack.applyInstallPack(
@@ -78,19 +98,19 @@ public final class InstallationService {
                     catalogRow.policyPackVersion(),
                     catalogRow.policyTemplatePack(),
                     userId)) {
-                installations.updateStatus(installationId, "revoked");
-                policyPack.revokeInstallPack(installationId);
+                rollback(installationId, secretRef);
                 throw new McpApiException(HttpStatus.BAD_GATEWAY, "policy_apply_failed", "policy apply failed");
             }
+            audit.emitInstallationEvent(orgId, workspaceId, installationId, req.connectorKey(), "created", userId);
             return toDto(installations.findById(workspaceId, installationId).orElseThrow());
         } catch (SQLException e) {
             if (isUniqueViolation(e) && installationId != null) {
-                rollback(installationId);
+                rollback(installationId, secretRef);
             }
             throw new IllegalStateException(e);
         } catch (McpApiException e) {
             if (installationId != null) {
-                rollback(installationId);
+                rollback(installationId, secretRef);
             }
             throw e;
         }
@@ -98,9 +118,14 @@ public final class InstallationService {
 
     public void delete(UUID workspaceId, UUID installationId) {
         try {
-            installations.findById(workspaceId, installationId).orElseThrow(() -> notFound("installation not found"));
+            var detail = installations
+                    .findDetail(workspaceId, installationId)
+                    .orElseThrow(() -> notFound("installation not found"));
             policyPack.revokeInstallPack(installationId);
+            secrets.revoke(detail.credentialSecretRef());
             installations.updateStatus(installationId, "revoked");
+            audit.emitInstallationEvent(
+                    detail.orgId(), workspaceId, installationId, detail.connectorKey(), "deleted", null);
         } catch (SQLException e) {
             throw new IllegalStateException(e);
         }
@@ -111,9 +136,10 @@ public final class InstallationService {
             var detail = installations
                     .findDetail(workspaceId, installationId)
                     .orElseThrow(() -> notFound("installation not found"));
+            var merged = mergeConfig(detail.connectionConfig(), detail.credentialSecretRef());
             ProbeResult probe;
             if ("notion".equals(detail.connectorKey())) {
-                probe = notionProbe.probe(detail.connectionConfig());
+                probe = notionProbe.probe(merged);
             } else {
                 probe = new ProbeResult(true, "no probe for connector");
             }
@@ -131,10 +157,17 @@ public final class InstallationService {
         }
     }
 
-    private void rollback(UUID installationId) {
+    private Map<String, Object> mergeConfig(Map<String, Object> connectionConfig, String secretRef) {
+        var merged = new HashMap<>(connectionConfig);
+        secrets.resolvePayload(secretRef).forEach(merged::putIfAbsent);
+        return merged;
+    }
+
+    private void rollback(UUID installationId, String secretRef) {
         try {
             installations.updateStatus(installationId, "revoked");
             policyPack.revokeInstallPack(installationId);
+            secrets.revoke(secretRef);
         } catch (SQLException ex) {
             throw new IllegalStateException(ex);
         }
