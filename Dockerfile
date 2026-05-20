@@ -2,6 +2,7 @@ FROM gradle:8.10.2-jdk21 AS build
 WORKDIR /app
 COPY gradle.properties settings.gradle.kts build.gradle.kts gradlew gradlew.bat ./
 COPY gradle ./gradle
+COPY openapi ./openapi
 COPY src ./src
 RUN gradle --no-daemon shadowJar -x test \
     && JAR=$(ls build/libs/*-all.jar | head -n1) \

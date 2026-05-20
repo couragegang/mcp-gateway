@@ -1,23 +1,27 @@
-# MCP Gateway
+# mcp-gateway
 
-Реестр MCP-серверов организации, health/probe, прокси tool-calls (MVP). Префикс API: **`/v1/mcp`**, порт **8081**.
+Платформенный **каталог MCP** и **установки в workspace** (`/v1/mcp`).
+
+Контракт: [`../api-contracts/mcp/openapi.yaml`](../api-contracts/mcp/openapi.yaml)
 
 ## Запуск
 
 ```bash
-export JAVA_HOME="C:\Program Files\Eclipse Adoptium\jdk-21.0.11.10-hotspot"  # Windows
-./gradlew run
+docker compose up --build
 ```
 
-## Эндпоинты (скелет)
+- API: http://localhost:8081/v1/mcp/
+- Postgres: localhost:5435
 
-| Метод | Путь | Описание |
-|-------|------|----------|
-| GET | `/v1/mcp/` | Информация о сервисе |
-| GET | `/v1/mcp/servers` | Список MCP (in-memory; seed `notion`) |
-| POST | `/v1/mcp/servers` | Регистрация сервера |
-| POST | `/v1/mcp/servers/{id}/health` | Probe (пока `probe_pending`) |
+## API (MVP)
 
-## Notion (spike)
+| Метод | Путь |
+|-------|------|
+| GET | `/catalog` |
+| GET | `/catalog/{connectorKey}` |
+| GET | `/workspaces/{workspaceId}/installations` |
+| POST | `/workspaces/{workspaceId}/installations` — заголовки `X-Org-Id`, опционально `X-User-Id` |
+| POST | `/workspaces/{workspaceId}/installations/{id}/health` |
+| DELETE | `/workspaces/{workspaceId}/installations/{id}` |
 
-Переменные: `MCP_NOTION_ENABLED`, `NOTION_INTEGRATION_TOKEN`. Полная интеграция — в §7 `cursor-context`.
+Notion seed в Flyway `V2__seed_notion_catalog.sql`. Policy apply — заглушка (лог).

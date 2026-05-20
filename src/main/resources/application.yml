@@ -9,12 +9,6 @@ micronaut:
     export:
       prometheus:
         enabled: true
-    binders:
-      web:
-        enabled: true
-        server:
-          percentiles: [0.5, 0.95, 0.99]
-          histogram: true
 
 endpoints:
   health:
@@ -27,7 +21,19 @@ endpoints:
     sensitive: false
     path: metrics
 
+datasources:
+  default:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:mcp}
+    username: ${DB_USER:mcp}
+    password: ${DB_PASSWORD:mcp}
+    driver-class-name: org.postgresql.Driver
+
+flyway:
+  datasources:
+    default:
+      enabled: true
+
 mcp:
-  notion:
-    enabled: ${MCP_NOTION_ENABLED:false}
-    integration-token: ${NOTION_INTEGRATION_TOKEN:}
+  policy-service:
+    enabled: ${POLICY_SERVICE_ENABLED:false}
+    base-url: ${POLICY_SERVICE_URL:http://localhost:8085/v1/policy}

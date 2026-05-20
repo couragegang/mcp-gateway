@@ -13,7 +13,7 @@ public final class HealthInfoController {
                 "service", "mcp-gateway",
                 "health", "/v1/mcp/health",
                 "metrics", "/v1/mcp/metrics",
-                "servers", "/v1/mcp/servers"
-        );
+                "catalog", "/v1/mcp/catalog",
+                "installations", "/v1/mcp/workspaces/{workspaceId}/installations");
     }
 }
