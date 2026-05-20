@@ -7,8 +7,8 @@ version = "0.1.0-SNAPSHOT"
 group = "com.couragegang.mcp"
 
 repositories {
-    maven { url = uri("https://maven.aliyun.com/repository/public") }
     mavenCentral()
+    maven { url = uri("https://maven.aliyun.com/repository/public") }
 }
 
 java {
@@ -32,6 +32,7 @@ dependencies {
     annotationProcessor("io.micronaut.validation:micronaut-validation-processor")
 
     implementation("io.micronaut:micronaut-http-server-netty")
+    implementation("io.projectreactor:reactor-core")
     implementation("io.micronaut:micronaut-http-client")
     implementation("io.micronaut.validation:micronaut-validation")
     implementation("io.micronaut.sql:micronaut-jdbc-hikari")

@@ -20,7 +20,7 @@ public final class ConnectionFormSplitter {
     public SplitResult split(Map<String, Object> formSchema, Map<String, Object> form) {
         var secrets = new LinkedHashMap<String, String>();
         var config = new LinkedHashMap<String, Object>();
-        var fieldRules = extractFieldRules(formSchema);
+        var fieldRules = extractFieldRules(formSchema, json);
         for (var entry : form.entrySet()) {
             var key = entry.getKey();
             var value = entry.getValue();
@@ -37,7 +37,7 @@ public final class ConnectionFormSplitter {
         return new SplitResult(secrets, config);
     }
 
-    private static Map<String, String> extractFieldRules(Map<String, Object> formSchema) {
+    private static Map<String, String> extractFieldRules(Map<String, Object> formSchema, ObjectMapper json) {
         var rules = new HashMap<String, String>();
         if (formSchema == null || formSchema.isEmpty()) {
             return rules;

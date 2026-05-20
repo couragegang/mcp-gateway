@@ -137,11 +137,11 @@ public final class InstallationService {
                     .findDetail(workspaceId, installationId)
                     .orElseThrow(() -> notFound("installation not found"));
             var merged = mergeConfig(detail.connectionConfig(), detail.credentialSecretRef());
-            ProbeResult probe;
+            NotionHealthProbe.ProbeResult probe;
             if ("notion".equals(detail.connectorKey())) {
                 probe = notionProbe.probe(merged);
             } else {
-                probe = new ProbeResult(true, "no probe for connector");
+                probe = new NotionHealthProbe.ProbeResult(true, "no probe for connector");
             }
             var result = probe.ok() ? "ok" : "error";
             installations.insertHealthCheck(
@@ -185,5 +185,4 @@ public final class InstallationService {
         return new McpApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", msg);
     }
 
-    private record ProbeResult(boolean ok, String message) {}
 }

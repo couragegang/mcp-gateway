@@ -47,7 +47,7 @@ public final class InstallationRepository {
             ps.setString(3, connectorKey);
             ps.setString(4, displayLabel);
             ps.setString(5, secretRef);
-            ps.setString(6, json.writeValueAsString(connectionConfig));
+            ps.setString(6, toJson(connectionConfig));
             if (installedBy == null) {
                 ps.setNull(7, Types.OTHER);
             } else {
@@ -144,7 +144,7 @@ public final class InstallationRepository {
                         """)) {
             ps.setObject(1, installationId);
             ps.setString(2, result);
-            ps.setString(3, details == null ? null : json.writeValueAsString(details));
+            ps.setString(3, details == null ? null : toJson(details));
             ps.executeUpdate();
         }
     }
@@ -157,6 +157,14 @@ public final class InstallationRepository {
                 rs.getString(4),
                 rs.getString(5),
                 rs.getTimestamp(6).toInstant());
+    }
+
+    private String toJson(Map<String, Object> value) throws SQLException {
+        try {
+            return json.writeValueAsString(value);
+        } catch (Exception e) {
+            throw new SQLException("invalid json", e);
+        }
     }
 
     private Map<String, Object> parseJson(String raw) throws SQLException {

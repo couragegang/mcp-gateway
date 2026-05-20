@@ -9,7 +9,7 @@ import io.micronaut.http.annotation.Get;
 import io.micronaut.http.annotation.PathVariable;
 
 @Controller
-public final class CatalogController {
+public class CatalogController {
 
     private final CatalogService catalog;
 
