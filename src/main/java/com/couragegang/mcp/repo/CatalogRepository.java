@@ -26,7 +26,7 @@ public final class CatalogRepository {
                 var ps = c.prepareStatement(
                         """
                         SELECT connector_key, display_name, description, connection_form_schema::text,
-                               policy_pack_version::text
+                               policy_pack_version, policy_template_pack::text
                         FROM mcp_catalog_tools WHERE status = 'published' ORDER BY display_name
                         """)) {
             var out = new ArrayList<CatalogRow>();
@@ -44,7 +44,7 @@ public final class CatalogRepository {
                 var ps = c.prepareStatement(
                         """
                         SELECT connector_key, display_name, description, connection_form_schema::text,
-                               policy_pack_version::text
+                               policy_pack_version, policy_template_pack::text
                         FROM mcp_catalog_tools
                         WHERE connector_key = ? AND status = 'published'
                         """)) {
@@ -64,7 +64,8 @@ public final class CatalogRepository {
                 rs.getString(2),
                 rs.getString(3),
                 parseJson(rs.getString(4)),
-                rs.getString(5));
+                rs.getInt(5),
+                parseJson(rs.getString(6)));
     }
 
     private Map<String, Object> parseJson(String raw) throws SQLException {
@@ -80,5 +81,6 @@ public final class CatalogRepository {
             String displayName,
             String description,
             Map<String, Object> connectionFormSchema,
-            String policyPackVersion) {}
+            int policyPackVersion,
+            Map<String, Object> policyTemplatePack) {}
 }

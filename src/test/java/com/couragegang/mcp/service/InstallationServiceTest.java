@@ -49,11 +49,12 @@ class InstallationServiceTest {
     void createInstallation() throws Exception {
         when(catalog.findPublished("notion"))
                 .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
-                        "notion", "Notion", "d", Map.of(), "1")));
+                        "notion", "Notion", "d", Map.of(), 1, Map.of("rules", List.of()))));
         when(installations.listByWorkspace(wsId)).thenReturn(List.of());
         var instId = UUID.randomUUID();
         when(installations.insert(any(), any(), any(), any(), any(), any(), any())).thenReturn(instId);
-        when(policyPack.applyInstallPack(any(), any(), any(), any())).thenReturn(true);
+        when(policyPack.applyInstallPack(any(), any(), any(), any(), any(Integer.class), any(), any()))
+                .thenReturn(true);
         when(installations.findById(wsId, instId))
                 .thenReturn(Optional.of(new InstallationRepository.InstallationRow(
                         instId, wsId, "notion", "Notion", "active", Instant.now())));

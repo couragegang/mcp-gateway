@@ -25,7 +25,7 @@ public final class CatalogService {
                             r.displayName(),
                             r.description(),
                             r.connectionFormSchema(),
-                            r.policyPackVersion()))
+                            String.valueOf(r.policyPackVersion())))
                     .toList();
             return new CatalogListResponse(items);
         } catch (SQLException e) {
@@ -41,7 +41,7 @@ public final class CatalogService {
                     row.displayName(),
                     row.description(),
                     row.connectionFormSchema(),
-                    row.policyPackVersion());
+                    String.valueOf(row.policyPackVersion()));
         } catch (SQLException e) {
             throw new IllegalStateException(e);
         }

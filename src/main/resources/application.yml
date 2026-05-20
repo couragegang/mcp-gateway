@@ -35,5 +35,6 @@ flyway:
 
 mcp:
   policy-service:
-    enabled: ${POLICY_SERVICE_ENABLED:false}
+    enabled: ${POLICY_SERVICE_ENABLED:true}
     base-url: ${POLICY_SERVICE_URL:http://localhost:8085/v1/policy}
+    internal-api-key: ${POLICY_INTERNAL_API_KEY:dev-internal-key}

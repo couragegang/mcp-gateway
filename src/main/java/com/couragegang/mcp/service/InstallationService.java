@@ -51,7 +51,7 @@ public final class InstallationService {
             UUID orgId, UUID workspaceId, InstallationCreateRequest req, @Nullable UUID userId) {
         UUID installationId = null;
         try {
-            catalog.findPublished(req.connectorKey()).orElseThrow(() -> notFound("connector not found"));
+            var catalogRow = catalog.findPublished(req.connectorKey()).orElseThrow(() -> notFound("connector not found"));
             if (installations.listByWorkspace(workspaceId).stream()
                     .anyMatch(i -> i.connectorKey().equals(req.connectorKey()))) {
                 throw new McpApiException(HttpStatus.CONFLICT, "CONFLICT", "connector already installed");
@@ -70,7 +70,14 @@ public final class InstallationService {
                             config,
                             userId);
             installations.updateStatus(installationId, "active");
-            if (!policyPack.applyInstallPack(orgId, workspaceId, installationId, req.connectorKey())) {
+            if (!policyPack.applyInstallPack(
+                    orgId,
+                    workspaceId,
+                    installationId,
+                    req.connectorKey(),
+                    catalogRow.policyPackVersion(),
+                    catalogRow.policyTemplatePack(),
+                    userId)) {
                 installations.updateStatus(installationId, "revoked");
                 policyPack.revokeInstallPack(installationId);
                 throw new McpApiException(HttpStatus.BAD_GATEWAY, "policy_apply_failed", "policy apply failed");
