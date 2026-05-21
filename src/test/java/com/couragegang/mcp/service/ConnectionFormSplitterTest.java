@@ -12,7 +12,7 @@ class ConnectionFormSplitterTest {
 
     @Test
     void splitsSecretAndConfigFields() {
-        var schema =
+        Map<String, Object> schema =
                 Map.of(
                         "fields",
                         java.util.List.of(

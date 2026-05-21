@@ -1,7 +1,19 @@
 plugins {
     id("io.micronaut.application") version "4.5.4"
     id("com.gradleup.shadow") version "8.3.7"
+    jacoco
 }
+
+extra["jacocoCoverageExcludes"] = listOf(
+    "**/api/dto/**",
+    "**/repo/**",
+    "**/Application.class",
+    "**/config/JacksonFactory.class",
+    "**/integration/**",
+    "**/api/CatalogController.class",
+    "**/api/InstallationsController.class",
+)
+apply(from = rootDir.resolve("gradle/jacoco-coverage.gradle.kts"))
 
 version = "0.1.0-SNAPSHOT"
 group = "com.couragegang.mcp"
