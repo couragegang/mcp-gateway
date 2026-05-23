@@ -12,7 +12,7 @@ class McpApiExceptionTest {
         var ex = new McpApiException(HttpStatus.CONFLICT, "CONFLICT", "already installed");
 
         assertThat(ex.getMessage()).isEqualTo("already installed");
-        assertThat(ex.status()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(ex.status().getCode()).isEqualTo(HttpStatus.CONFLICT.getCode());
         assertThat(ex.body().code()).isEqualTo("CONFLICT");
     }
 }

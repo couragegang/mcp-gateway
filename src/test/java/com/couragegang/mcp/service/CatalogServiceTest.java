@@ -3,6 +3,7 @@ package com.couragegang.mcp.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
+import java.sql.SQLException;
 
 import com.couragegang.mcp.error.McpApiException;
 import com.couragegang.mcp.repo.CatalogRepository;
@@ -57,5 +58,19 @@ class CatalogServiceTest {
         var tool = svc.get("notion");
 
         assertThat(tool.policyPackVersion()).isEqualTo("2");
+    }
+
+    @Test
+    void getWrapsSqlException() throws Exception {
+        when(catalog.findPublished("notion")).thenThrow(new SQLException("db"));
+
+        assertThatThrownBy(() -> svc.get("notion")).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void listWrapsSqlException() throws Exception {
+        when(catalog.listPublished()).thenThrow(new SQLException("db"));
+
+        assertThatThrownBy(() -> svc.list()).isInstanceOf(IllegalStateException.class);
     }
 }
