@@ -1,5 +1,6 @@
 package com.couragegang.mcp.integration;
 
+import com.couragegang.mcp.metrics.OutboundHttpMetrics;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micronaut.context.annotation.Value;
@@ -27,17 +28,20 @@ public final class SecretsClient {
     private final String baseUrl;
     private final String internalKey;
     private final HttpClient http;
+    private final OutboundHttpMetrics metrics;
     private final ObjectMapper json;
 
     public SecretsClient(
             @Value("${mcp.secrets-service.enabled:true}") boolean enabled,
             @Value("${mcp.secrets-service.base-url:http://localhost:8087/v1/secrets}") String baseUrl,
             @Value("${mcp.secrets-service.internal-api-key:dev-internal-key}") String internalKey,
-            ObjectMapper json) {
+            ObjectMapper json,
+            OutboundHttpMetrics metrics) {
         this.enabled = enabled;
         this.baseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
         this.internalKey = internalKey;
         this.json = json;
+        this.metrics = metrics;
         this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     }
 
@@ -60,7 +64,7 @@ public final class SecretsClient {
                             .header("X-Secrets-Internal-Key", internalKey)
                             .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body), StandardCharsets.UTF_8))
                             .build();
-            var response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            var response = metrics.send(http, request, "secrets", "store_credentials");
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
                 var node = json.readTree(response.body());
                 return Optional.ofNullable(node.path("secretRef").asText(null));
@@ -83,7 +87,7 @@ public final class SecretsClient {
                             .header("X-Secrets-Internal-Key", internalKey)
                             .GET()
                             .build();
-            var response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            var response = metrics.send(http, request, "secrets", "resolve_credentials");
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
                 JsonNode payload = json.readTree(response.body()).path("payload");
                 var out = new LinkedHashMap<String, Object>();
@@ -107,7 +111,7 @@ public final class SecretsClient {
                             .header("X-Secrets-Internal-Key", internalKey)
                             .DELETE()
                             .build();
-            http.send(request, HttpResponse.BodyHandlers.discarding());
+            metrics.send(http, request, "secrets", "revoke_credentials");
         } catch (Exception e) {
             LOG.warn("secrets revoke error: {}", e.toString());
         }

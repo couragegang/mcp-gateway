@@ -1,5 +1,6 @@
 package com.couragegang.mcp.integration;
 
+import com.couragegang.mcp.metrics.OutboundHttpMetrics;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micronaut.context.annotation.Value;
 import jakarta.inject.Singleton;
@@ -23,17 +24,20 @@ public final class PolicyPackApplier {
     private final String baseUrl;
     private final String internalKey;
     private final HttpClient http;
+    private final OutboundHttpMetrics metrics;
     private final ObjectMapper json;
 
     public PolicyPackApplier(
             @Value("${mcp.policy-service.enabled:false}") boolean enabled,
             @Value("${mcp.policy-service.base-url:http://localhost:8085/v1/policy}") String baseUrl,
             @Value("${mcp.policy-service.internal-api-key:dev-internal-key}") String internalKey,
-            ObjectMapper json) {
+            ObjectMapper json,
+            OutboundHttpMetrics metrics) {
         this.enabled = enabled;
         this.baseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
         this.internalKey = internalKey;
         this.json = json;
+        this.metrics = metrics;
         this.http =
                 HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     }
@@ -69,7 +73,7 @@ public final class PolicyPackApplier {
                             .header("X-Policy-Internal-Key", internalKey)
                             .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body), StandardCharsets.UTF_8))
                             .build();
-            var response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            var response = metrics.send(http, request, "policy", "apply_install_pack");
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
                 return true;
             }
@@ -93,7 +97,7 @@ public final class PolicyPackApplier {
                             .header("X-Policy-Internal-Key", internalKey)
                             .DELETE()
                             .build();
-            http.send(request, HttpResponse.BodyHandlers.discarding());
+            metrics.send(http, request, "policy", "revoke_install_pack");
         } catch (Exception e) {
             LOG.warn("policy revoke-pack error: {}", e.toString());
         }

@@ -1,5 +1,6 @@
 package com.couragegang.mcp.integration;
 
+import com.couragegang.mcp.metrics.OutboundHttpMetrics;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micronaut.context.annotation.Value;
 import jakarta.inject.Singleton;
@@ -23,17 +24,20 @@ public final class AuditClient {
     private final String baseUrl;
     private final String internalKey;
     private final HttpClient http;
+    private final OutboundHttpMetrics metrics;
     private final ObjectMapper json;
 
     public AuditClient(
             @Value("${mcp.audit-service.enabled:true}") boolean enabled,
             @Value("${mcp.audit-service.base-url:http://localhost:8086/v1/audit}") String baseUrl,
             @Value("${mcp.audit-service.internal-api-key:dev-internal-key}") String internalKey,
-            ObjectMapper json) {
+            ObjectMapper json,
+            OutboundHttpMetrics metrics) {
         this.enabled = enabled;
         this.baseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
         this.internalKey = internalKey;
         this.json = json;
+        this.metrics = metrics;
         this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     }
 
@@ -67,7 +71,7 @@ public final class AuditClient {
                             .header("X-Audit-Internal-Key", internalKey)
                             .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body), StandardCharsets.UTF_8))
                             .build();
-            http.send(request, HttpResponse.BodyHandlers.discarding());
+            metrics.send(http, request, "audit", "emit_tool_event");
         } catch (Exception e) {
             LOG.debug("audit emit skipped: {}", e.toString());
         }

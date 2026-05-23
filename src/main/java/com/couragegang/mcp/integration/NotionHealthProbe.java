@@ -1,5 +1,6 @@
 package com.couragegang.mcp.integration;
 
+import com.couragegang.mcp.metrics.OutboundHttpMetrics;
 import jakarta.inject.Singleton;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -12,8 +13,13 @@ import java.util.Optional;
 @Singleton
 public final class NotionHealthProbe {
 
-    private final HttpClient http =
-            HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+    private final HttpClient http;
+    private final OutboundHttpMetrics metrics;
+
+    public NotionHealthProbe(OutboundHttpMetrics metrics) {
+        this.metrics = metrics;
+        this.http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+    }
 
     public ProbeResult probe(Map<String, Object> connectionConfig) {
         var token = findToken(connectionConfig);
@@ -28,7 +34,7 @@ public final class NotionHealthProbe {
                             .header("Notion-Version", "2022-06-28")
                             .GET()
                             .build();
-            var response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            var response = metrics.send(http, request, "notion", "probe_users_me");
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
                 return new ProbeResult(true, "Notion API OK");
             }

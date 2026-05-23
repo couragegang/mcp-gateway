@@ -12,7 +12,7 @@ public final class HealthInfoController {
         return Map.of(
                 "service", "mcp-gateway",
                 "health", "/v1/mcp/health",
-                "metrics", "/v1/mcp/metrics",
+                "metrics", "/v1/mcp/prometheus",
                 "catalog", "/v1/mcp/catalog",
                 "installations", "/v1/mcp/workspaces/{workspaceId}/installations");
     }

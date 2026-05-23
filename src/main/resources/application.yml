@@ -9,6 +9,21 @@ micronaut:
     export:
       prometheus:
         enabled: true
+        descriptions: true
+    binders:
+      jvm:
+        enabled: true
+      web:
+        enabled: true
+        server:
+          percentiles: [0.5, 0.95, 0.99]
+          histogram: true
+      uptime:
+        enabled: true
+      jdbc:
+        enabled: true
+      processor:
+        enabled: true
 
 endpoints:
   health:
@@ -19,7 +34,6 @@ endpoints:
   prometheus:
     enabled: true
     sensitive: false
-    path: metrics
 
 datasources:
   default:
