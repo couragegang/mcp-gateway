@@ -18,11 +18,12 @@ paths:
   /catalog:
     get:
       tags: [catalog]
-      operationId: mcpCatalogList
       summary: Каталог MCP (платформа)
+      operationId: mcpCatalogList
       security: []
       responses:
         '200':
+          description: OK
           content:
             application/json:
               schema:
@@ -30,11 +31,13 @@ paths:
   /catalog/{connectorKey}:
     get:
       tags: [catalog]
+      summary: Mcp Catalog Get
       operationId: mcpCatalogGet
       parameters:
         - $ref: '#/components/parameters/ConnectorKey'
       responses:
         '200':
+          description: OK
           content:
             application/json:
               schema:
@@ -42,19 +45,21 @@ paths:
   /workspaces/{workspaceId}/installations:
     get:
       tags: [installations]
+      summary: Mcp Installations List
       operationId: mcpInstallationsList
       parameters:
         - $ref: '#/components/parameters/WorkspaceId'
       responses:
         '200':
+          description: OK
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/InstallationListResponse'
     post:
       tags: [installations]
-      operationId: mcpInstallationsCreate
       summary: Установить из каталога (credentials + policy pack apply)
+      operationId: mcpInstallationsCreate
       parameters:
         - $ref: '#/components/parameters/WorkspaceId'
       requestBody:
@@ -65,6 +70,7 @@ paths:
               $ref: '#/components/schemas/InstallationCreateRequest'
       responses:
         '201':
+          description: OK
           content:
             application/json:
               schema:
@@ -74,18 +80,21 @@ paths:
   /workspaces/{workspaceId}/installations/{installationId}:
     patch:
       tags: [installations]
+      summary: Mcp Installations Patch
       operationId: mcpInstallationsPatch
       parameters:
         - $ref: '#/components/parameters/WorkspaceId'
         - $ref: '#/components/parameters/InstallationId'
       responses:
         '200':
+          description: OK
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Installation'
     delete:
       tags: [installations]
+      summary: Mcp Installations Delete
       operationId: mcpInstallationsDelete
       parameters:
         - $ref: '#/components/parameters/WorkspaceId'
@@ -96,12 +105,14 @@ paths:
   /workspaces/{workspaceId}/installations/{installationId}/health:
     post:
       tags: [installations]
+      summary: Mcp Installations Health
       operationId: mcpInstallationsHealth
       parameters:
         - $ref: '#/components/parameters/WorkspaceId'
         - $ref: '#/components/parameters/InstallationId'
       responses:
         '200':
+          description: OK
           content:
             application/json:
               schema:
