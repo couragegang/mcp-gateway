@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: MCP Gateway API
-  version: 0.1.0-draft
+  version: 0.1.0
   description: |
     Платформенный каталог инструментов и установки в workspace.
     x-erd: cursor-context/docs/erd-and-bounded-contexts.md#4-bc-mcp-registry--proxy-mcp-gateway
