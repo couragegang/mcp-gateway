@@ -583,7 +583,10 @@
         "label": "Contour (Prometheus)",
         "type": "datasource",
         "query": "prometheus",
+        "hide": 0,
+        "includeAll": false,
         "current": {
+          "selected": true,
           "text": "Prometheus-Prod",
           "value": "prometheus-prod"
         },
