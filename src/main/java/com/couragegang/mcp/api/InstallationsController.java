@@ -10,9 +10,12 @@ import io.micronaut.http.HttpResponse;
 import io.micronaut.http.HttpStatus;
 import io.micronaut.http.annotation.Body;
 import io.micronaut.http.annotation.Controller;
+import com.couragegang.mcp.api.dto.McpModels.InstallationDetail;
+import com.couragegang.mcp.api.dto.McpModels.InstallationUpdateRequest;
 import io.micronaut.http.annotation.Delete;
 import io.micronaut.http.annotation.Get;
 import io.micronaut.http.annotation.Header;
+import io.micronaut.http.annotation.Patch;
 import io.micronaut.http.annotation.PathVariable;
 import io.micronaut.http.annotation.Post;
 import jakarta.annotation.Nullable;
@@ -42,6 +45,20 @@ public class InstallationsController {
         var orgId = parseUuid(orgIdHeader, "X-Org-Id");
         var userId = userIdHeader != null && !userIdHeader.isBlank() ? UUID.fromString(userIdHeader) : null;
         return HttpResponse.created(installations.create(orgId, workspaceId, body, userId));
+    }
+
+    @Get("/workspaces/{workspaceId}/installations/{installationId}")
+    public HttpResponse<InstallationDetail> get(
+            @PathVariable UUID workspaceId, @PathVariable UUID installationId) {
+        return HttpResponse.ok(installations.getDetail(workspaceId, installationId));
+    }
+
+    @Patch("/workspaces/{workspaceId}/installations/{installationId}")
+    public HttpResponse<Installation> patch(
+            @PathVariable UUID workspaceId,
+            @PathVariable UUID installationId,
+            @Body @Valid InstallationUpdateRequest body) {
+        return HttpResponse.ok(installations.update(workspaceId, installationId, body));
     }
 
     @Delete("/workspaces/{workspaceId}/installations/{installationId}")

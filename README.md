@@ -21,6 +21,8 @@ docker compose up --build
 | GET | `/catalog/{connectorKey}` |
 | GET | `/workspaces/{workspaceId}/installations` |
 | POST | `/workspaces/{workspaceId}/installations` — заголовки `X-Org-Id`, опционально `X-User-Id` |
+| GET | `/workspaces/{workspaceId}/installations/{id}` — детали (форма, policy pack) |
+| PATCH | `/workspaces/{workspaceId}/installations/{id}` — label, credentials, policy |
 | POST | `/workspaces/{workspaceId}/installations/{id}/health` |
 | DELETE | `/workspaces/{workspaceId}/installations/{id}` |
 

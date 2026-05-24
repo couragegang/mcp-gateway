@@ -12,6 +12,9 @@ extra["jacocoCoverageExcludes"] = listOf(
     "**/integration/**",
     "**/api/CatalogController.class",
     "**/api/InstallationsController.class",
+    "**/api/InternalToolsController.class",
+    "**/api/NotionSetupController.class",
+    "**/security/**",
 )
 apply(from = rootDir.resolve("gradle/jacoco-coverage.gradle.kts"))
 

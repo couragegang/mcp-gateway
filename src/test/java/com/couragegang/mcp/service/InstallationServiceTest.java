@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.couragegang.mcp.api.dto.McpModels.InstallationCreateRequest;
+import com.couragegang.mcp.api.dto.McpModels.InstallationUpdateRequest;
 import com.couragegang.mcp.error.McpApiException;
 import com.couragegang.mcp.integration.AuditClient;
 import com.couragegang.mcp.integration.NotionHealthProbe;
@@ -68,7 +69,7 @@ class InstallationServiceTest {
         when(catalog.findPublished("notion"))
                 .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
                         "notion", "Notion", "d", Map.of(), 1, Map.of())));
-        when(installations.listByWorkspace(wsId)).thenReturn(List.of());
+        when(installations.findByWorkspaceAndConnector(wsId, "notion")).thenReturn(Optional.empty());
         when(formSplitter.split(any(), any()))
                 .thenReturn(new ConnectionFormSplitter.SplitResult(Map.of(), Map.of()));
         var instId = UUID.randomUUID();
@@ -80,7 +81,7 @@ class InstallationServiceTest {
                 .thenReturn(Optional.of(new InstallationRepository.InstallationRow(
                         instId, wsId, "notion", "My Notion", "active", Instant.now())));
 
-        svc.create(orgId, wsId, new InstallationCreateRequest("notion", "  My Notion  ", Map.of()), null);
+        svc.create(orgId, wsId, new InstallationCreateRequest("notion", "  My Notion  ", Map.of(), null), null);
 
         verify(installations).insert(any(), any(), any(), eq("My Notion"), any(), any(), any());
     }
@@ -91,7 +92,7 @@ class InstallationServiceTest {
         when(catalog.findPublished("notion"))
                 .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
                         "notion", "Notion", "d", schema, 1, Map.of("rules", List.of()))));
-        when(installations.listByWorkspace(wsId)).thenReturn(List.of());
+        when(installations.findByWorkspaceAndConnector(wsId, "notion")).thenReturn(Optional.empty());
         when(formSplitter.split(eq(schema), any()))
                 .thenReturn(new ConnectionFormSplitter.SplitResult(
                         Map.of("integration_token", "secret_x"), Map.of()));
@@ -110,7 +111,8 @@ class InstallationServiceTest {
                 svc.create(
                         orgId,
                         wsId,
-                        new InstallationCreateRequest("notion", "Notion", Map.of("integration_token", "secret_x")),
+                        new InstallationCreateRequest(
+                                "notion", "Notion", Map.of("integration_token", "secret_x"), null),
                         null);
 
         assertThat(result.connectorKey()).isEqualTo("notion");
@@ -121,7 +123,7 @@ class InstallationServiceTest {
         when(catalog.findPublished("slack"))
                 .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
                         "slack", "Slack", "d", Map.of(), 1, Map.of())));
-        when(installations.listByWorkspace(wsId)).thenReturn(List.of());
+        when(installations.findByWorkspaceAndConnector(wsId, "slack")).thenReturn(Optional.empty());
         when(formSplitter.split(any(), any()))
                 .thenReturn(new ConnectionFormSplitter.SplitResult(Map.of(), Map.of("x", 1)));
         var instId = UUID.randomUUID();
@@ -134,7 +136,7 @@ class InstallationServiceTest {
                 .thenReturn(Optional.of(new InstallationRepository.InstallationRow(
                         instId, wsId, "slack", "slack", "active", Instant.now())));
 
-        svc.create(orgId, wsId, new InstallationCreateRequest("slack", null, Map.of()), null);
+        svc.create(orgId, wsId, new InstallationCreateRequest("slack", null, Map.of(), null), null);
 
         verify(secrets, org.mockito.Mockito.never()).storeCredentials(any(), any(), any(), any());
     }
@@ -144,7 +146,7 @@ class InstallationServiceTest {
         when(catalog.findPublished("notion"))
                 .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
                         "notion", "N", "d", Map.of(), 1, Map.of())));
-        when(installations.listByWorkspace(wsId)).thenReturn(List.of());
+        when(installations.findByWorkspaceAndConnector(wsId, "notion")).thenReturn(Optional.empty());
         when(formSplitter.split(any(), any()))
                 .thenReturn(new ConnectionFormSplitter.SplitResult(Map.of("token", "s"), Map.of()));
         when(secrets.storeCredentials(any(), any(), any(), any())).thenReturn(Optional.empty());
@@ -154,7 +156,7 @@ class InstallationServiceTest {
                                 svc.create(
                                         orgId,
                                         wsId,
-                                        new InstallationCreateRequest("notion", "N", Map.of("token", "s")),
+                                        new InstallationCreateRequest("notion", "N", Map.of("token", "s"), null),
                                         null))
                 .isInstanceOf(McpApiException.class);
     }
@@ -164,12 +166,22 @@ class InstallationServiceTest {
         when(catalog.findPublished("notion"))
                 .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
                         "notion", "N", "d", Map.of(), 1, Map.of())));
-        when(installations.listByWorkspace(wsId))
-                .thenReturn(List.of(new InstallationRepository.InstallationRow(
-                        UUID.randomUUID(), wsId, "notion", "N", "active", Instant.now())));
+        var existingId = UUID.randomUUID();
+        when(installations.findByWorkspaceAndConnector(wsId, "notion"))
+                .thenReturn(
+                        Optional.of(
+                                new InstallationRepository.InstallationDetailRow(
+                                        existingId,
+                                        orgId,
+                                        wsId,
+                                        "notion",
+                                        "N",
+                                        "active",
+                                        Map.of(),
+                                        "secrets:r")));
 
         assertThatThrownBy(
-                        () -> svc.create(orgId, wsId, new InstallationCreateRequest("notion", "N", Map.of()), null))
+                        () -> svc.create(orgId, wsId, new InstallationCreateRequest("notion", "N", Map.of(), null), null))
                 .isInstanceOf(McpApiException.class);
     }
 
@@ -225,7 +237,7 @@ class InstallationServiceTest {
         when(catalog.findPublished("notion"))
                 .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
                         "notion", "N", "d", Map.of(), 1, Map.of())));
-        when(installations.listByWorkspace(wsId)).thenReturn(List.of());
+        when(installations.findByWorkspaceAndConnector(wsId, "notion")).thenReturn(Optional.empty());
         when(formSplitter.split(any(), any()))
                 .thenReturn(new ConnectionFormSplitter.SplitResult(Map.of("t", "s"), Map.of()));
         when(secrets.storeCredentials(any(), any(), any(), any())).thenReturn(Optional.of("secrets:r"));
@@ -241,7 +253,7 @@ class InstallationServiceTest {
                                 svc.create(
                                         orgId,
                                         wsId,
-                                        new InstallationCreateRequest("notion", "N", Map.of("t", "s")),
+                                        new InstallationCreateRequest("notion", "N", Map.of("t", "s"), null),
                                         null))
                 .isInstanceOf(McpApiException.class);
 
@@ -302,7 +314,7 @@ class InstallationServiceTest {
                                 svc.create(
                                         orgId,
                                         wsId,
-                                        new InstallationCreateRequest("ghost", null, Map.of()),
+                                        new InstallationCreateRequest("ghost", null, Map.of(), null),
                                         null))
                 .isInstanceOf(McpApiException.class);
     }
@@ -320,5 +332,291 @@ class InstallationServiceTest {
 
         assertThat(res.ok()).isTrue();
         verify(notionProbe, org.mockito.Mockito.never()).probe(any());
+    }
+
+    @Test
+    void getDetailReturnsSchemaAndSecretsFlag() throws Exception {
+        var id = UUID.randomUUID();
+        var schema = Map.<String, Object>of("fields", List.of());
+        when(installations.findDetail(wsId, id))
+                .thenReturn(Optional.of(detailRow(id, "active", Map.of("k", "v"), "secrets:ref")));
+        when(catalog.findPublished("notion"))
+                .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
+                        "notion", "Notion", "d", schema, 1, Map.of())));
+        when(installations.findById(wsId, id))
+                .thenReturn(Optional.of(installationRow(id, "notion", "Notion", "active")));
+
+        var res = svc.getDetail(wsId, id);
+
+        assertThat(res.secretsConfigured()).isTrue();
+        assertThat(res.connectionFormSchema()).isEqualTo(schema);
+        assertThat(res.config()).containsEntry("k", "v");
+    }
+
+    @Test
+    void getDetailLocalSecretNotConfigured() throws Exception {
+        var id = UUID.randomUUID();
+        when(installations.findDetail(wsId, id))
+                .thenReturn(Optional.of(detailRow(id, "slack", "active", Map.of(), "local:none")));
+        when(catalog.findPublished("slack"))
+                .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
+                        "slack", "Slack", "d", Map.of(), 1, Map.of())));
+        when(installations.findById(wsId, id))
+                .thenReturn(Optional.of(installationRow(id, "slack", "Slack", "active")));
+
+        assertThat(svc.getDetail(wsId, id).secretsConfigured()).isFalse();
+    }
+
+    @Test
+    void getDetailRevokedNotFound() throws Exception {
+        var id = UUID.randomUUID();
+        when(installations.findDetail(wsId, id))
+                .thenReturn(Optional.of(detailRow(id, "revoked", Map.of(), "secrets:r")));
+
+        assertThatThrownBy(() -> svc.getDetail(wsId, id)).isInstanceOf(McpApiException.class);
+    }
+
+    @Test
+    void getDetailInstallationMissing() throws Exception {
+        var id = UUID.randomUUID();
+        when(installations.findDetail(wsId, id)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> svc.getDetail(wsId, id)).isInstanceOf(McpApiException.class);
+    }
+
+    @Test
+    void updateDisplayLabel() throws Exception {
+        var id = UUID.randomUUID();
+        var schema = Map.<String, Object>of("fields", List.of());
+        when(installations.findDetail(wsId, id))
+                .thenReturn(Optional.of(detailRow(id, "active", Map.of(), "secrets:r")));
+        when(catalog.findPublished("notion"))
+                .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
+                        "notion", "Notion", "d", schema, 1, Map.of())));
+        when(installations.updateDisplayLabel(wsId, id, "Renamed")).thenReturn(true);
+        when(installations.findById(wsId, id))
+                .thenReturn(Optional.of(installationRow(id, "notion", "Renamed", "active")));
+        doNothing().when(audit).emitInstallationEvent(any(), any(), any(), any(), any(), any());
+
+        var res = svc.update(wsId, id, new InstallationUpdateRequest("Renamed", null));
+
+        assertThat(res.displayLabel()).isEqualTo("Renamed");
+    }
+
+    @Test
+    void updateFormConfigAndSecrets() throws Exception {
+        var id = UUID.randomUUID();
+        var schema = Map.<String, Object>of("fields", List.of());
+        when(installations.findDetail(wsId, id))
+                .thenReturn(Optional.of(detailRow(id, "active", Map.of("old", 1), "secrets:old")));
+        when(catalog.findPublished("notion"))
+                .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
+                        "notion", "Notion", "d", schema, 1, Map.of())));
+        when(formSplitter.split(eq(schema), any()))
+                .thenReturn(
+                        new ConnectionFormSplitter.SplitResult(
+                                Map.of("integration_token", "tok-new"),
+                                Map.of("default_database_id", "db-new")));
+        doNothing().when(secrets).revoke("secrets:old");
+        when(secrets.storeCredentials(orgId, wsId, "notion", Map.of("integration_token", "tok-new")))
+                .thenReturn(Optional.of("secrets:new"));
+        when(installations.updateConnectionConfig(eq(wsId), eq(id), org.mockito.ArgumentMatchers.anyMap()))
+                .thenReturn(true);
+        when(installations.updateCredentialSecretRef(wsId, id, "secrets:new")).thenReturn(true);
+        when(installations.findById(wsId, id))
+                .thenReturn(Optional.of(installationRow(id, "notion", "Notion", "active")));
+        doNothing().when(audit).emitInstallationEvent(any(), any(), any(), any(), any(), any());
+
+        svc.update(wsId, id, new InstallationUpdateRequest(null, Map.of("integration_token", "tok-new")));
+
+        verify(installations).updateConnectionConfig(eq(wsId), eq(id), any());
+        verify(installations).updateCredentialSecretRef(wsId, id, "secrets:new");
+    }
+
+    @Test
+    void createReactivatesRevokedInstallation() throws Exception {
+        var existingId = UUID.randomUUID();
+        when(catalog.findPublished("notion"))
+                .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
+                        "notion", "Notion", "d", Map.of(), 1, Map.of("rules", List.of()))));
+        when(installations.findByWorkspaceAndConnector(wsId, "notion"))
+                .thenReturn(Optional.of(detailRow(existingId, "revoked", Map.of(), "secrets:old")));
+        when(formSplitter.split(any(), any()))
+                .thenReturn(new ConnectionFormSplitter.SplitResult(Map.of(), Map.of()));
+        doNothing().when(secrets).revoke("secrets:old");
+        doNothing().when(policyPack).revokeInstallPack(existingId);
+        when(installations.reactivate(eq(wsId), eq(existingId), eq("Notion"), eq("local:none"), any(), any()))
+                .thenReturn(true);
+        when(policyPack.applyInstallPack(any(), any(), eq(existingId), any(), anyInt(), any(), any()))
+                .thenReturn(true);
+        doNothing().when(audit).emitInstallationEvent(any(), any(), any(), any(), any(), any());
+        when(installations.findById(wsId, existingId))
+                .thenReturn(Optional.of(installationRow(existingId, "notion", "Notion", "active")));
+
+        var res = svc.create(orgId, wsId, new InstallationCreateRequest("notion", "Notion", Map.of(), null), null);
+
+        assertThat(res.id()).isEqualTo(existingId);
+        verify(installations, org.mockito.Mockito.never()).insert(any(), any(), any(), any(), any(), any(), any());
+        verify(installations).reactivate(eq(wsId), eq(existingId), eq("Notion"), eq("local:none"), any(), any());
+    }
+
+    @Test
+    void createReactivateFailsWhenRowMissing() throws Exception {
+        var existingId = UUID.randomUUID();
+        when(catalog.findPublished("notion"))
+                .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
+                        "notion", "N", "d", Map.of(), 1, Map.of())));
+        when(installations.findByWorkspaceAndConnector(wsId, "notion"))
+                .thenReturn(Optional.of(detailRow(existingId, "revoked", Map.of(), "secrets:old")));
+        when(formSplitter.split(any(), any()))
+                .thenReturn(new ConnectionFormSplitter.SplitResult(Map.of(), Map.of()));
+        doNothing().when(secrets).revoke("secrets:old");
+        doNothing().when(policyPack).revokeInstallPack(existingId);
+        when(installations.reactivate(any(), any(), any(), any(), any(), any())).thenReturn(false);
+        doNothing().when(secrets).revoke("local:none");
+
+        assertThatThrownBy(
+                        () -> svc.create(orgId, wsId, new InstallationCreateRequest("notion", "N", Map.of(), null), null))
+                .isInstanceOf(McpApiException.class);
+    }
+
+    @Test
+    void createUniqueViolationReturnsConflict() throws Exception {
+        when(catalog.findPublished("notion"))
+                .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
+                        "notion", "N", "d", Map.of(), 1, Map.of())));
+        when(installations.findByWorkspaceAndConnector(wsId, "notion")).thenReturn(Optional.empty());
+        when(formSplitter.split(any(), any()))
+                .thenReturn(new ConnectionFormSplitter.SplitResult(Map.of(), Map.of()));
+        when(installations.insert(any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(new java.sql.SQLException("duplicate", "23505", 23505));
+
+        assertThatThrownBy(
+                        () -> svc.create(orgId, wsId, new InstallationCreateRequest("notion", "N", Map.of(), null), null))
+                .isInstanceOf(McpApiException.class)
+                .matches(e -> "CONFLICT".equals(((McpApiException) e).body().code()), "CONFLICT code");
+    }
+
+    @Test
+    void createNormalizesNotionDatabaseId() throws Exception {
+        var dbUuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+        when(catalog.findPublished("notion"))
+                .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
+                        "notion", "N", "d", Map.of(), 1, Map.of())));
+        when(installations.findByWorkspaceAndConnector(wsId, "notion")).thenReturn(Optional.empty());
+        when(formSplitter.split(any(), any()))
+                .thenReturn(new ConnectionFormSplitter.SplitResult(Map.of(), Map.of("default_database_id", dbUuid)));
+        var instId = UUID.randomUUID();
+        when(installations.insert(any(), any(), any(), any(), eq("local:none"), any(), any()))
+                .thenReturn(instId);
+        when(policyPack.applyInstallPack(any(), any(), any(), any(), anyInt(), any(), any())).thenReturn(true);
+        doNothing().when(installations).updateStatus(any(), any());
+        doNothing().when(audit).emitInstallationEvent(any(), any(), any(), any(), any(), any());
+        when(installations.findById(wsId, instId))
+                .thenReturn(Optional.of(installationRow(instId, "notion", "notion", "active")));
+
+        svc.create(orgId, wsId, new InstallationCreateRequest("notion", null, Map.of(), null), null);
+
+        verify(installations)
+                .insert(
+                        eq(orgId),
+                        eq(wsId),
+                        eq("notion"),
+                        eq("notion"),
+                        eq("local:none"),
+                        org.mockito.ArgumentMatchers.argThat(
+                                cfg -> dbUuid.equalsIgnoreCase(String.valueOf(((Map<?, ?>) cfg).get("default_database_id")))),
+                        any());
+    }
+
+    @Test
+    void healthNotFoundWhenInstallationMissing() throws Exception {
+        var id = UUID.randomUUID();
+        when(installations.findDetail(wsId, id)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> svc.health(wsId, id)).isInstanceOf(McpApiException.class);
+    }
+
+    @Test
+    void updateDisplayLabelNotFound() throws Exception {
+        var id = UUID.randomUUID();
+        when(installations.findDetail(wsId, id))
+                .thenReturn(Optional.of(detailRow(id, "active", Map.of(), "secrets:r")));
+        when(catalog.findPublished("notion"))
+                .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
+                        "notion", "N", "d", Map.of(), 1, Map.of())));
+
+        when(installations.updateDisplayLabel(wsId, id, "X")).thenReturn(false);
+
+        assertThatThrownBy(() -> svc.update(wsId, id, new InstallationUpdateRequest("X", null)))
+                .isInstanceOf(McpApiException.class);
+    }
+
+    @Test
+    void createUsesExplicitPolicyPack() throws Exception {
+        var customPack = Map.<String, Object>of("mode", "strict");
+        when(catalog.findPublished("notion"))
+                .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
+                        "notion", "N", "d", Map.of(), 1, Map.of("default", true))));
+        when(installations.findByWorkspaceAndConnector(wsId, "notion")).thenReturn(Optional.empty());
+        when(formSplitter.split(any(), any()))
+                .thenReturn(new ConnectionFormSplitter.SplitResult(Map.of(), Map.of()));
+        var instId = UUID.randomUUID();
+        when(installations.insert(any(), any(), any(), any(), any(), any(), any())).thenReturn(instId);
+        when(policyPack.applyInstallPack(any(), any(), any(), any(), anyInt(), eq(customPack), any()))
+                .thenReturn(true);
+        doNothing().when(installations).updateStatus(any(), any());
+        doNothing().when(audit).emitInstallationEvent(any(), any(), any(), any(), any(), any());
+        when(installations.findById(wsId, instId))
+                .thenReturn(Optional.of(installationRow(instId, "notion", "notion", "active")));
+
+        svc.create(orgId, wsId, new InstallationCreateRequest("notion", null, Map.of(), customPack), null);
+
+        verify(policyPack).applyInstallPack(any(), any(), any(), any(), anyInt(), eq(customPack), any());
+    }
+
+    @Test
+    void createStripsBlankNotionDatabaseId() throws Exception {
+        when(catalog.findPublished("notion"))
+                .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
+                        "notion", "N", "d", Map.of(), 1, Map.of())));
+        when(installations.findByWorkspaceAndConnector(wsId, "notion")).thenReturn(Optional.empty());
+        when(formSplitter.split(any(), any()))
+                .thenReturn(new ConnectionFormSplitter.SplitResult(Map.of(), Map.of("default_database_id", "   ")));
+        var instId = UUID.randomUUID();
+        when(installations.insert(any(), any(), any(), any(), any(), any(), any())).thenReturn(instId);
+        when(policyPack.applyInstallPack(any(), any(), any(), any(), anyInt(), any(), any())).thenReturn(true);
+        doNothing().when(installations).updateStatus(any(), any());
+        doNothing().when(audit).emitInstallationEvent(any(), any(), any(), any(), any(), any());
+        when(installations.findById(wsId, instId))
+                .thenReturn(Optional.of(installationRow(instId, "notion", "notion", "active")));
+
+        svc.create(orgId, wsId, new InstallationCreateRequest("notion", null, Map.of(), null), null);
+
+        verify(installations)
+                .insert(
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        org.mockito.ArgumentMatchers.argThat(cfg -> !((Map<?, ?>) cfg).containsKey("default_database_id")),
+                        any());
+    }
+
+    private InstallationRepository.InstallationDetailRow detailRow(
+            UUID id, String status, Map<String, Object> config, String secretRef) {
+        return detailRow(id, "notion", status, config, secretRef);
+    }
+
+    private InstallationRepository.InstallationDetailRow detailRow(
+            UUID id, String connectorKey, String status, Map<String, Object> config, String secretRef) {
+        return new InstallationRepository.InstallationDetailRow(
+                id, orgId, wsId, connectorKey, connectorKey, status, config, secretRef);
+    }
+
+    private InstallationRepository.InstallationRow installationRow(
+            UUID id, String connector, String label, String status) {
+        return new InstallationRepository.InstallationRow(id, wsId, connector, label, status, Instant.now());
     }
 }

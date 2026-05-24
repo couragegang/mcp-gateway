@@ -60,6 +60,69 @@ public final class InstallationRepository {
         }
     }
 
+    public Optional<InstallationDetailRow> findByWorkspaceAndConnector(UUID workspaceId, String connectorKey)
+            throws SQLException {
+        try (var c = dataSource.getConnection();
+                var ps = c.prepareStatement(
+                        """
+                        SELECT id, org_id, workspace_id, connector_key, display_label, status,
+                               connection_config::text, credential_secret_ref
+                        FROM workspace_mcp_installations
+                        WHERE workspace_id = ? AND connector_key = ?
+                        """)) {
+            ps.setObject(1, workspaceId);
+            ps.setString(2, connectorKey);
+            try (var rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return Optional.of(new InstallationDetailRow(
+                            rs.getObject(1, UUID.class),
+                            rs.getObject(2, UUID.class),
+                            rs.getObject(3, UUID.class),
+                            rs.getString(4),
+                            rs.getString(5),
+                            rs.getString(6),
+                            parseJson(rs.getString(7)),
+                            rs.getString(8)));
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
+    public boolean reactivate(
+            UUID workspaceId,
+            UUID installationId,
+            String displayLabel,
+            String secretRef,
+            Map<String, Object> connectionConfig,
+            UUID installedBy)
+            throws SQLException {
+        try (var c = dataSource.getConnection();
+                var ps = c.prepareStatement(
+                        """
+                        UPDATE workspace_mcp_installations
+                        SET display_label = ?,
+                            credential_secret_ref = ?,
+                            connection_config = ?::jsonb,
+                            status = 'active',
+                            installed_at = now(),
+                            installed_by_user_id = ?
+                        WHERE id = ? AND workspace_id = ?
+                        """)) {
+            ps.setString(1, displayLabel);
+            ps.setString(2, secretRef);
+            ps.setString(3, toJson(connectionConfig));
+            if (installedBy == null) {
+                ps.setNull(4, Types.OTHER);
+            } else {
+                ps.setObject(4, installedBy);
+            }
+            ps.setObject(5, installationId);
+            ps.setObject(6, workspaceId);
+            return ps.executeUpdate() > 0;
+        }
+    }
+
     public List<InstallationRow> listByWorkspace(UUID workspaceId) throws SQLException {
         try (var c = dataSource.getConnection();
                 var ps = c.prepareStatement(
@@ -131,6 +194,52 @@ public final class InstallationRepository {
             ps.setString(1, status);
             ps.setObject(2, id);
             ps.executeUpdate();
+        }
+    }
+
+    public boolean updateDisplayLabel(UUID workspaceId, UUID id, String displayLabel) throws SQLException {
+        try (var c = dataSource.getConnection();
+                var ps = c.prepareStatement(
+                        """
+                        UPDATE workspace_mcp_installations
+                        SET display_label = ?
+                        WHERE id = ? AND workspace_id = ? AND status <> 'revoked'
+                        """)) {
+            ps.setString(1, displayLabel);
+            ps.setObject(2, id);
+            ps.setObject(3, workspaceId);
+            return ps.executeUpdate() > 0;
+        }
+    }
+
+    public boolean updateConnectionConfig(UUID workspaceId, UUID id, Map<String, Object> config)
+            throws SQLException {
+        try (var c = dataSource.getConnection();
+                var ps = c.prepareStatement(
+                        """
+                        UPDATE workspace_mcp_installations
+                        SET connection_config = ?::jsonb
+                        WHERE id = ? AND workspace_id = ? AND status <> 'revoked'
+                        """)) {
+            ps.setString(1, toJson(config));
+            ps.setObject(2, id);
+            ps.setObject(3, workspaceId);
+            return ps.executeUpdate() > 0;
+        }
+    }
+
+    public boolean updateCredentialSecretRef(UUID workspaceId, UUID id, String secretRef) throws SQLException {
+        try (var c = dataSource.getConnection();
+                var ps = c.prepareStatement(
+                        """
+                        UPDATE workspace_mcp_installations
+                        SET credential_secret_ref = ?
+                        WHERE id = ? AND workspace_id = ? AND status <> 'revoked'
+                        """)) {
+            ps.setString(1, secretRef);
+            ps.setObject(2, id);
+            ps.setObject(3, workspaceId);
+            return ps.executeUpdate() > 0;
         }
     }
 

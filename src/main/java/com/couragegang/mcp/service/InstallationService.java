@@ -3,10 +3,13 @@ package com.couragegang.mcp.service;
 import com.couragegang.mcp.api.dto.McpModels.HealthCheckResult;
 import com.couragegang.mcp.api.dto.McpModels.Installation;
 import com.couragegang.mcp.api.dto.McpModels.InstallationCreateRequest;
+import com.couragegang.mcp.api.dto.McpModels.InstallationDetail;
 import com.couragegang.mcp.api.dto.McpModels.InstallationListResponse;
+import com.couragegang.mcp.api.dto.McpModels.InstallationUpdateRequest;
 import com.couragegang.mcp.error.McpApiException;
 import com.couragegang.mcp.integration.AuditClient;
 import com.couragegang.mcp.integration.NotionHealthProbe;
+import com.couragegang.mcp.integration.NotionIdParser;
 import com.couragegang.mcp.integration.PolicyPackApplier;
 import com.couragegang.mcp.integration.SecretsClient;
 import com.couragegang.mcp.repo.CatalogRepository;
@@ -64,11 +67,12 @@ public final class InstallationService {
         String secretRef = null;
         try {
             var catalogRow = catalog.findPublished(req.connectorKey()).orElseThrow(() -> notFound("connector not found"));
-            if (installations.listByWorkspace(workspaceId).stream()
-                    .anyMatch(i -> i.connectorKey().equals(req.connectorKey()))) {
+            var existing = installations.findByWorkspaceAndConnector(workspaceId, req.connectorKey());
+            if (existing.isPresent() && !"revoked".equals(existing.get().status())) {
                 throw new McpApiException(HttpStatus.CONFLICT, "CONFLICT", "connector already installed");
             }
             var split = formSplitter.split(catalogRow.connectionFormSchema(), req.form());
+            var config = normalizeNotionConfig(req.connectorKey(), new HashMap<>(split.config()));
             if (!split.secrets().isEmpty()) {
                 secretRef =
                         secrets.storeCredentials(orgId, workspaceId, req.connectorKey(), split.secrets())
@@ -80,23 +84,38 @@ public final class InstallationService {
             var label = req.displayLabel() != null && !req.displayLabel().isBlank()
                     ? req.displayLabel().trim()
                     : req.connectorKey();
-            installationId =
-                    installations.insert(
-                            orgId,
-                            workspaceId,
-                            req.connectorKey(),
-                            label,
-                            secretRef,
-                            split.config(),
-                            userId);
-            installations.updateStatus(installationId, "active");
+            var pack =
+                    req.policyPack() != null && !req.policyPack().isEmpty()
+                            ? req.policyPack()
+                            : catalogRow.policyTemplatePack();
+            if (existing.isPresent() && "revoked".equals(existing.get().status())) {
+                var revoked = existing.get();
+                installationId = revoked.id();
+                secrets.revoke(revoked.credentialSecretRef());
+                policyPack.revokeInstallPack(installationId);
+                if (!installations.reactivate(workspaceId, installationId, label, secretRef, config, userId)) {
+                    secrets.revoke(secretRef);
+                    throw notFound("installation not found");
+                }
+            } else {
+                installationId =
+                        installations.insert(
+                                orgId,
+                                workspaceId,
+                                req.connectorKey(),
+                                label,
+                                secretRef,
+                                config,
+                                userId);
+                installations.updateStatus(installationId, "active");
+            }
             if (!policyPack.applyInstallPack(
                     orgId,
                     workspaceId,
                     installationId,
                     req.connectorKey(),
                     catalogRow.policyPackVersion(),
-                    catalogRow.policyTemplatePack(),
+                    pack,
                     userId)) {
                 rollback(installationId, secretRef);
                 throw new McpApiException(HttpStatus.BAD_GATEWAY, "policy_apply_failed", "policy apply failed");
@@ -104,8 +123,11 @@ public final class InstallationService {
             audit.emitInstallationEvent(orgId, workspaceId, installationId, req.connectorKey(), "created", userId);
             return toDto(installations.findById(workspaceId, installationId).orElseThrow());
         } catch (SQLException e) {
-            if (isUniqueViolation(e) && installationId != null) {
-                rollback(installationId, secretRef);
+            if (isUniqueViolation(e)) {
+                if (installationId != null) {
+                    rollback(installationId, secretRef);
+                }
+                throw new McpApiException(HttpStatus.CONFLICT, "CONFLICT", "connector already installed");
             }
             throw new IllegalStateException(e);
         } catch (McpApiException e) {
@@ -113,6 +135,76 @@ public final class InstallationService {
                 rollback(installationId, secretRef);
             }
             throw e;
+        }
+    }
+
+    public InstallationDetail getDetail(UUID workspaceId, UUID installationId) {
+        try {
+            var detail =
+                    installations.findDetail(workspaceId, installationId).orElseThrow(() -> notFound("installation not found"));
+            if ("revoked".equals(detail.status())) {
+                throw notFound("installation not found");
+            }
+            var catalogRow =
+                    catalog.findPublished(detail.connectorKey()).orElseThrow(() -> notFound("connector not found"));
+            var config = new HashMap<String, Object>();
+            if (detail.connectionConfig() != null) {
+                config.putAll(detail.connectionConfig());
+            }
+            var hasSecrets =
+                    detail.credentialSecretRef() != null
+                            && !detail.credentialSecretRef().isBlank()
+                            && !detail.credentialSecretRef().startsWith("local:");
+            return new InstallationDetail(
+                    toDto(installations.findById(workspaceId, installationId).orElseThrow()),
+                    catalogRow.connectionFormSchema(),
+                    config,
+                    hasSecrets);
+        } catch (SQLException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    public Installation update(UUID workspaceId, UUID installationId, InstallationUpdateRequest req) {
+        try {
+            var detail =
+                    installations.findDetail(workspaceId, installationId).orElseThrow(() -> notFound("installation not found"));
+            if ("revoked".equals(detail.status())) {
+                throw notFound("installation not found");
+            }
+            var catalogRow =
+                    catalog.findPublished(detail.connectorKey()).orElseThrow(() -> notFound("connector not found"));
+
+            if (req.displayLabel() != null && !req.displayLabel().isBlank()) {
+                if (!installations.updateDisplayLabel(workspaceId, installationId, req.displayLabel().trim())) {
+                    throw notFound("installation not found");
+                }
+            }
+
+            if (req.form() != null && !req.form().isEmpty()) {
+                var split = formSplitter.split(catalogRow.connectionFormSchema(), req.form());
+                if (!split.config().isEmpty()) {
+                    var merged = new HashMap<>(detail.connectionConfig() != null ? detail.connectionConfig() : Map.of());
+                    merged.putAll(split.config());
+                    normalizeNotionConfig(detail.connectorKey(), merged);
+                    installations.updateConnectionConfig(workspaceId, installationId, merged);
+                }
+                if (!split.secrets().isEmpty()) {
+                    secrets.revoke(detail.credentialSecretRef());
+                    var secretRef =
+                            secrets.storeCredentials(detail.orgId(), workspaceId, detail.connectorKey(), split.secrets())
+                                    .orElseThrow(() -> new McpApiException(
+                                            HttpStatus.BAD_GATEWAY,
+                                            "secrets_store_failed",
+                                            "failed to store credentials"));
+                    installations.updateCredentialSecretRef(workspaceId, installationId, secretRef);
+                }
+            }
+
+            audit.emitInstallationEvent(detail.orgId(), workspaceId, installationId, detail.connectorKey(), "updated", null);
+            return toDto(installations.findById(workspaceId, installationId).orElseThrow());
+        } catch (SQLException e) {
+            throw new IllegalStateException(e);
         }
     }
 
@@ -171,6 +263,23 @@ public final class InstallationService {
         } catch (SQLException ex) {
             throw new IllegalStateException(ex);
         }
+    }
+
+    private static Map<String, Object> normalizeNotionConfig(String connectorKey, Map<String, Object> config) {
+        if (!"notion".equals(connectorKey)) {
+            return config;
+        }
+        var raw = config.get("default_database_id");
+        if (raw == null) {
+            return config;
+        }
+        var s = String.valueOf(raw).strip();
+        if (s.isBlank()) {
+            config.remove("default_database_id");
+            return config;
+        }
+        NotionIdParser.parseId(s).ifPresent(id -> config.put("default_database_id", id));
+        return config;
     }
 
     private static boolean isUniqueViolation(SQLException e) {

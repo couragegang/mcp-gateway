@@ -17,7 +17,8 @@ public final class McpModels {
             String displayName,
             String description,
             Map<String, Object> connectionFormSchema,
-            String policyPackVersion) {}
+            String policyPackVersion,
+            Map<String, Object> policyTemplatePack) {}
 
     @Serdeable
     public record CatalogListResponse(List<CatalogTool> items) {}
@@ -34,7 +35,18 @@ public final class McpModels {
     public record InstallationCreateRequest(
             @NotBlank String connectorKey,
             String displayLabel,
-            @NotNull Map<String, Object> form) {}
+            @NotNull Map<String, Object> form,
+            Map<String, Object> policyPack) {}
+
+    @Serdeable
+    public record InstallationUpdateRequest(String displayLabel, Map<String, Object> form) {}
+
+    @Serdeable
+    public record InstallationDetail(
+            Installation installation,
+            Map<String, Object> connectionFormSchema,
+            Map<String, Object> config,
+            boolean secretsConfigured) {}
 
     @Serdeable
     public record InstallationListResponse(List<Installation> items) {}
