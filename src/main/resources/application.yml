@@ -49,6 +49,8 @@ flyway:
 
 mcp:
   internal-api-key: ${MCP_INTERNAL_API_KEY:dev-internal-key}
+  connectors:
+    notion-runtime-url: ${MCP_NOTION_RUNTIME_URL:http://mcp-notion:8091/v1/notion}
   policy-service:
     enabled: ${POLICY_SERVICE_ENABLED:true}
     base-url: ${POLICY_SERVICE_URL:http://localhost:8085/v1/policy}

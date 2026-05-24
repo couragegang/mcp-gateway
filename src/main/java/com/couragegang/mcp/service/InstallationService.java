@@ -8,8 +8,7 @@ import com.couragegang.mcp.api.dto.McpModels.InstallationListResponse;
 import com.couragegang.mcp.api.dto.McpModels.InstallationUpdateRequest;
 import com.couragegang.mcp.error.McpApiException;
 import com.couragegang.mcp.integration.AuditClient;
-import com.couragegang.mcp.integration.NotionHealthProbe;
-import com.couragegang.mcp.integration.NotionIdParser;
+import com.couragegang.mcp.integration.ConnectorRuntimeClient;
 import com.couragegang.mcp.integration.PolicyPackApplier;
 import com.couragegang.mcp.integration.SecretsClient;
 import com.couragegang.mcp.repo.CatalogRepository;
@@ -31,7 +30,7 @@ public final class InstallationService {
     private final SecretsClient secrets;
     private final PolicyPackApplier policyPack;
     private final AuditClient audit;
-    private final NotionHealthProbe notionProbe;
+    private final ConnectorRuntimeClient connectorRuntime;
 
     public InstallationService(
             CatalogRepository catalog,
@@ -40,14 +39,14 @@ public final class InstallationService {
             SecretsClient secrets,
             PolicyPackApplier policyPack,
             AuditClient audit,
-            NotionHealthProbe notionProbe) {
+            ConnectorRuntimeClient connectorRuntime) {
         this.catalog = catalog;
         this.installations = installations;
         this.formSplitter = formSplitter;
         this.secrets = secrets;
         this.policyPack = policyPack;
         this.audit = audit;
-        this.notionProbe = notionProbe;
+        this.connectorRuntime = connectorRuntime;
     }
 
     public InstallationListResponse list(UUID workspaceId) {
@@ -228,22 +227,33 @@ public final class InstallationService {
             var detail = installations
                     .findDetail(workspaceId, installationId)
                     .orElseThrow(() -> notFound("installation not found"));
-            var merged = mergeConfig(detail.connectionConfig(), detail.credentialSecretRef());
-            NotionHealthProbe.ProbeResult probe;
-            if ("notion".equals(detail.connectorKey())) {
-                probe = notionProbe.probe(merged);
+            var catalogRow = catalog.findPublished(detail.connectorKey()).orElse(null);
+            var runtimeUrl =
+                    connectorRuntime.resolveRuntimeBaseUrl(
+                            detail.connectorKey(), catalogRow != null ? catalogRow.runtimeBaseUrl() : null);
+            HealthCheckResult check;
+            if (runtimeUrl != null && !runtimeUrl.isBlank()) {
+                var merged = mergeConfig(detail.connectionConfig(), detail.credentialSecretRef());
+                check =
+                        connectorRuntime.probeHealth(
+                                runtimeUrl,
+                                installationId,
+                                workspaceId,
+                                detail.orgId(),
+                                merged,
+                                detail.credentialSecretRef());
             } else {
-                probe = new NotionHealthProbe.ProbeResult(true, "no probe for connector");
+                check = new HealthCheckResult(true, "no probe for connector");
             }
-            var result = probe.ok() ? "ok" : "error";
+            var result = check.ok() ? "ok" : "error";
             installations.insertHealthCheck(
-                    installationId, result, Map.of("message", probe.message()));
-            if (!probe.ok()) {
+                    installationId, result, Map.of("message", check.message()));
+            if (!check.ok()) {
                 installations.updateStatus(installationId, "error");
             } else if ("error".equals(detail.status())) {
                 installations.updateStatus(installationId, "active");
             }
-            return new HealthCheckResult(probe.ok(), probe.message());
+            return check;
         } catch (SQLException e) {
             throw new IllegalStateException(e);
         }
@@ -265,20 +275,23 @@ public final class InstallationService {
         }
     }
 
-    private static Map<String, Object> normalizeNotionConfig(String connectorKey, Map<String, Object> config) {
+    private Map<String, Object> normalizeNotionConfig(String connectorKey, Map<String, Object> config) {
         if (!"notion".equals(connectorKey)) {
             return config;
         }
-        var raw = config.get("default_database_id");
-        if (raw == null) {
-            return config;
+        try {
+            var catalogRow = catalog.findPublished(connectorKey).orElse(null);
+            var runtimeUrl =
+                    connectorRuntime.resolveRuntimeBaseUrl(
+                            connectorKey, catalogRow != null ? catalogRow.runtimeBaseUrl() : null);
+            if (runtimeUrl != null && !runtimeUrl.isBlank()) {
+                return connectorRuntime.normalizeConfig(runtimeUrl, connectorKey, config);
+            }
+        } catch (IllegalStateException e) {
+            throw new McpApiException(HttpStatus.BAD_GATEWAY, "connector_normalize_failed", e.getMessage());
+        } catch (SQLException e) {
+            throw new IllegalStateException(e);
         }
-        var s = String.valueOf(raw).strip();
-        if (s.isBlank()) {
-            config.remove("default_database_id");
-            return config;
-        }
-        NotionIdParser.parseId(s).ifPresent(id -> config.put("default_database_id", id));
         return config;
     }
 

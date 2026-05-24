@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -13,7 +14,8 @@ import com.couragegang.mcp.api.dto.McpModels.InstallationCreateRequest;
 import com.couragegang.mcp.api.dto.McpModels.InstallationUpdateRequest;
 import com.couragegang.mcp.error.McpApiException;
 import com.couragegang.mcp.integration.AuditClient;
-import com.couragegang.mcp.integration.NotionHealthProbe;
+import com.couragegang.mcp.api.dto.McpModels.HealthCheckResult;
+import com.couragegang.mcp.integration.ConnectorRuntimeClient;
 import com.couragegang.mcp.integration.PolicyPackApplier;
 import com.couragegang.mcp.integration.SecretsClient;
 import com.couragegang.mcp.repo.CatalogRepository;
@@ -51,7 +53,7 @@ class InstallationServiceTest {
     AuditClient audit;
 
     @Mock
-    NotionHealthProbe notionProbe;
+    ConnectorRuntimeClient connectorRuntime;
 
     InstallationService svc;
 
@@ -61,14 +63,31 @@ class InstallationServiceTest {
     @BeforeEach
     void setUp() {
         svc = new InstallationService(
-                catalog, installations, formSplitter, secrets, policyPack, audit, notionProbe);
+                catalog, installations, formSplitter, secrets, policyPack, audit, connectorRuntime);
+        lenient()
+                .when(connectorRuntime.resolveRuntimeBaseUrl(eq("notion"), any()))
+                .thenReturn("http://mcp-notion:8091/v1/notion");
+        lenient()
+                .when(connectorRuntime.normalizeConfig(any(), eq("notion"), any()))
+                .thenAnswer(invocation -> {
+                    @SuppressWarnings("unchecked")
+                    var cfg = new java.util.HashMap<>((Map<String, Object>) invocation.getArgument(2));
+                    var raw = cfg.get("default_database_id");
+                    if (raw != null) {
+                        var s = String.valueOf(raw).strip();
+                        if (s.isBlank()) {
+                            cfg.remove("default_database_id");
+                        }
+                    }
+                    return cfg;
+                });
     }
 
     @Test
     void createTrimsDisplayLabel() throws Exception {
         when(catalog.findPublished("notion"))
                 .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
-                        "notion", "Notion", "d", Map.of(), 1, Map.of())));
+                        "notion", "Notion", "d", Map.of(), 1, Map.of(), "http://mcp-notion:8091/v1/notion", "http")));
         when(installations.findByWorkspaceAndConnector(wsId, "notion")).thenReturn(Optional.empty());
         when(formSplitter.split(any(), any()))
                 .thenReturn(new ConnectionFormSplitter.SplitResult(Map.of(), Map.of()));
@@ -91,7 +110,7 @@ class InstallationServiceTest {
         var schema = Map.<String, Object>of("fields", List.of());
         when(catalog.findPublished("notion"))
                 .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
-                        "notion", "Notion", "d", schema, 1, Map.of("rules", List.of()))));
+                        "notion", "Notion", "d", schema, 1, Map.of("rules", List.of()), "http://mcp-notion:8091/v1/notion", "http")));
         when(installations.findByWorkspaceAndConnector(wsId, "notion")).thenReturn(Optional.empty());
         when(formSplitter.split(eq(schema), any()))
                 .thenReturn(new ConnectionFormSplitter.SplitResult(
@@ -122,7 +141,7 @@ class InstallationServiceTest {
     void createUsesLocalSecretWhenNoSecretsInForm() throws Exception {
         when(catalog.findPublished("slack"))
                 .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
-                        "slack", "Slack", "d", Map.of(), 1, Map.of())));
+                        "slack", "Slack", "d", Map.of(), 1, Map.of(), "http://mcp-notion:8091/v1/notion", "http")));
         when(installations.findByWorkspaceAndConnector(wsId, "slack")).thenReturn(Optional.empty());
         when(formSplitter.split(any(), any()))
                 .thenReturn(new ConnectionFormSplitter.SplitResult(Map.of(), Map.of("x", 1)));
@@ -145,7 +164,7 @@ class InstallationServiceTest {
     void createFailsWhenSecretsStoreReturnsEmpty() throws Exception {
         when(catalog.findPublished("notion"))
                 .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
-                        "notion", "N", "d", Map.of(), 1, Map.of())));
+                        "notion", "N", "d", Map.of(), 1, Map.of(), "http://mcp-notion:8091/v1/notion", "http")));
         when(installations.findByWorkspaceAndConnector(wsId, "notion")).thenReturn(Optional.empty());
         when(formSplitter.split(any(), any()))
                 .thenReturn(new ConnectionFormSplitter.SplitResult(Map.of("token", "s"), Map.of()));
@@ -165,7 +184,7 @@ class InstallationServiceTest {
     void createConflictWhenAlreadyInstalled() throws Exception {
         when(catalog.findPublished("notion"))
                 .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
-                        "notion", "N", "d", Map.of(), 1, Map.of())));
+                        "notion", "N", "d", Map.of(), 1, Map.of(), "http://mcp-notion:8091/v1/notion", "http")));
         var existingId = UUID.randomUUID();
         when(installations.findByWorkspaceAndConnector(wsId, "notion"))
                 .thenReturn(
@@ -225,7 +244,10 @@ class InstallationServiceTest {
                                 new InstallationRepository.InstallationDetailRow(
                                         id, orgId, wsId, "notion", "N", "active", Map.of(), "secrets:r")));
         when(secrets.resolvePayload("secrets:r")).thenReturn(Map.of("integration_token", "t"));
-        when(notionProbe.probe(any())).thenReturn(new NotionHealthProbe.ProbeResult(true, "ok"));
+        when(connectorRuntime.resolveRuntimeBaseUrl(eq("notion"), any()))
+                .thenReturn("http://mcp-notion:8091/v1/notion");
+        when(connectorRuntime.probeHealth(any(), any(), any(), any(), any(), any()))
+                .thenReturn(new HealthCheckResult(true, "ok"));
 
         var res = svc.health(wsId, id);
 
@@ -236,7 +258,7 @@ class InstallationServiceTest {
     void createFailsWhenPolicyApplyFails() throws Exception {
         when(catalog.findPublished("notion"))
                 .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
-                        "notion", "N", "d", Map.of(), 1, Map.of())));
+                        "notion", "N", "d", Map.of(), 1, Map.of(), "http://mcp-notion:8091/v1/notion", "http")));
         when(installations.findByWorkspaceAndConnector(wsId, "notion")).thenReturn(Optional.empty());
         when(formSplitter.split(any(), any()))
                 .thenReturn(new ConnectionFormSplitter.SplitResult(Map.of("t", "s"), Map.of()));
@@ -269,7 +291,10 @@ class InstallationServiceTest {
                                 new InstallationRepository.InstallationDetailRow(
                                         id, orgId, wsId, "notion", "N", "active", Map.of(), "secrets:r")));
         when(secrets.resolvePayload("secrets:r")).thenReturn(Map.of("integration_token", "t"));
-        when(notionProbe.probe(any())).thenReturn(new NotionHealthProbe.ProbeResult(false, "bad"));
+        when(connectorRuntime.resolveRuntimeBaseUrl(eq("notion"), any()))
+                .thenReturn("http://mcp-notion:8091/v1/notion");
+        when(connectorRuntime.probeHealth(any(), any(), any(), any(), any(), any()))
+                .thenReturn(new HealthCheckResult(false, "bad"));
         doNothing().when(installations).insertHealthCheck(any(), any(), any());
         doNothing().when(installations).updateStatus(any(), any());
 
@@ -288,7 +313,10 @@ class InstallationServiceTest {
                                 new InstallationRepository.InstallationDetailRow(
                                         id, orgId, wsId, "notion", "N", "error", Map.of(), "secrets:r")));
         when(secrets.resolvePayload("secrets:r")).thenReturn(Map.of("integration_token", "t"));
-        when(notionProbe.probe(any())).thenReturn(new NotionHealthProbe.ProbeResult(true, "ok"));
+        when(connectorRuntime.resolveRuntimeBaseUrl(eq("notion"), any()))
+                .thenReturn("http://mcp-notion:8091/v1/notion");
+        when(connectorRuntime.probeHealth(any(), any(), any(), any(), any(), any()))
+                .thenReturn(new HealthCheckResult(true, "ok"));
         doNothing().when(installations).insertHealthCheck(any(), any(), any());
         doNothing().when(installations).updateStatus(any(), any());
 
@@ -320,6 +348,26 @@ class InstallationServiceTest {
     }
 
     @Test
+    void healthUsesRuntimeFallbackWhenCatalogUrlMissing() throws Exception {
+        var id = UUID.randomUUID();
+        when(installations.findDetail(wsId, id)).thenReturn(Optional.of(detailRow(id, "active", Map.of(), "secrets:r")));
+        when(catalog.findPublished("notion"))
+                .thenReturn(
+                        Optional.of(
+                                new CatalogRepository.CatalogRow(
+                                        "notion", "N", "d", Map.of(), 1, Map.of(), null, "http")));
+        when(connectorRuntime.resolveRuntimeBaseUrl("notion", null))
+                .thenReturn("http://mcp-notion:8091/v1/notion");
+        when(connectorRuntime.probeHealth(any(), any(), any(), any(), any(), any()))
+                .thenReturn(new HealthCheckResult(true, "ok"));
+        doNothing().when(installations).insertHealthCheck(any(), any(), any());
+
+        var res = svc.health(wsId, id);
+
+        assertThat(res.ok()).isTrue();
+    }
+
+    @Test
     void healthGenericConnectorSkipsProbe() throws Exception {
         var id = UUID.randomUUID();
         when(installations.findDetail(wsId, id))
@@ -331,7 +379,7 @@ class InstallationServiceTest {
         var res = svc.health(wsId, id);
 
         assertThat(res.ok()).isTrue();
-        verify(notionProbe, org.mockito.Mockito.never()).probe(any());
+        verify(connectorRuntime, org.mockito.Mockito.never()).probeHealth(any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -342,7 +390,7 @@ class InstallationServiceTest {
                 .thenReturn(Optional.of(detailRow(id, "active", Map.of("k", "v"), "secrets:ref")));
         when(catalog.findPublished("notion"))
                 .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
-                        "notion", "Notion", "d", schema, 1, Map.of())));
+                        "notion", "Notion", "d", schema, 1, Map.of(), "http://mcp-notion:8091/v1/notion", "http")));
         when(installations.findById(wsId, id))
                 .thenReturn(Optional.of(installationRow(id, "notion", "Notion", "active")));
 
@@ -360,7 +408,7 @@ class InstallationServiceTest {
                 .thenReturn(Optional.of(detailRow(id, "slack", "active", Map.of(), "local:none")));
         when(catalog.findPublished("slack"))
                 .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
-                        "slack", "Slack", "d", Map.of(), 1, Map.of())));
+                        "slack", "Slack", "d", Map.of(), 1, Map.of(), "http://mcp-notion:8091/v1/notion", "http")));
         when(installations.findById(wsId, id))
                 .thenReturn(Optional.of(installationRow(id, "slack", "Slack", "active")));
 
@@ -392,7 +440,7 @@ class InstallationServiceTest {
                 .thenReturn(Optional.of(detailRow(id, "active", Map.of(), "secrets:r")));
         when(catalog.findPublished("notion"))
                 .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
-                        "notion", "Notion", "d", schema, 1, Map.of())));
+                        "notion", "Notion", "d", schema, 1, Map.of(), "http://mcp-notion:8091/v1/notion", "http")));
         when(installations.updateDisplayLabel(wsId, id, "Renamed")).thenReturn(true);
         when(installations.findById(wsId, id))
                 .thenReturn(Optional.of(installationRow(id, "notion", "Renamed", "active")));
@@ -411,7 +459,7 @@ class InstallationServiceTest {
                 .thenReturn(Optional.of(detailRow(id, "active", Map.of("old", 1), "secrets:old")));
         when(catalog.findPublished("notion"))
                 .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
-                        "notion", "Notion", "d", schema, 1, Map.of())));
+                        "notion", "Notion", "d", schema, 1, Map.of(), "http://mcp-notion:8091/v1/notion", "http")));
         when(formSplitter.split(eq(schema), any()))
                 .thenReturn(
                         new ConnectionFormSplitter.SplitResult(
@@ -438,7 +486,7 @@ class InstallationServiceTest {
         var existingId = UUID.randomUUID();
         when(catalog.findPublished("notion"))
                 .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
-                        "notion", "Notion", "d", Map.of(), 1, Map.of("rules", List.of()))));
+                        "notion", "Notion", "d", Map.of(), 1, Map.of("rules", List.of()), "http://mcp-notion:8091/v1/notion", "http")));
         when(installations.findByWorkspaceAndConnector(wsId, "notion"))
                 .thenReturn(Optional.of(detailRow(existingId, "revoked", Map.of(), "secrets:old")));
         when(formSplitter.split(any(), any()))
@@ -465,7 +513,7 @@ class InstallationServiceTest {
         var existingId = UUID.randomUUID();
         when(catalog.findPublished("notion"))
                 .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
-                        "notion", "N", "d", Map.of(), 1, Map.of())));
+                        "notion", "N", "d", Map.of(), 1, Map.of(), "http://mcp-notion:8091/v1/notion", "http")));
         when(installations.findByWorkspaceAndConnector(wsId, "notion"))
                 .thenReturn(Optional.of(detailRow(existingId, "revoked", Map.of(), "secrets:old")));
         when(formSplitter.split(any(), any()))
@@ -484,7 +532,7 @@ class InstallationServiceTest {
     void createUniqueViolationReturnsConflict() throws Exception {
         when(catalog.findPublished("notion"))
                 .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
-                        "notion", "N", "d", Map.of(), 1, Map.of())));
+                        "notion", "N", "d", Map.of(), 1, Map.of(), "http://mcp-notion:8091/v1/notion", "http")));
         when(installations.findByWorkspaceAndConnector(wsId, "notion")).thenReturn(Optional.empty());
         when(formSplitter.split(any(), any()))
                 .thenReturn(new ConnectionFormSplitter.SplitResult(Map.of(), Map.of()));
@@ -502,7 +550,7 @@ class InstallationServiceTest {
         var dbUuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
         when(catalog.findPublished("notion"))
                 .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
-                        "notion", "N", "d", Map.of(), 1, Map.of())));
+                        "notion", "N", "d", Map.of(), 1, Map.of(), "http://mcp-notion:8091/v1/notion", "http")));
         when(installations.findByWorkspaceAndConnector(wsId, "notion")).thenReturn(Optional.empty());
         when(formSplitter.split(any(), any()))
                 .thenReturn(new ConnectionFormSplitter.SplitResult(Map.of(), Map.of("default_database_id", dbUuid)));
@@ -544,7 +592,7 @@ class InstallationServiceTest {
                 .thenReturn(Optional.of(detailRow(id, "active", Map.of(), "secrets:r")));
         when(catalog.findPublished("notion"))
                 .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
-                        "notion", "N", "d", Map.of(), 1, Map.of())));
+                        "notion", "N", "d", Map.of(), 1, Map.of(), "http://mcp-notion:8091/v1/notion", "http")));
 
         when(installations.updateDisplayLabel(wsId, id, "X")).thenReturn(false);
 
@@ -557,7 +605,7 @@ class InstallationServiceTest {
         var customPack = Map.<String, Object>of("mode", "strict");
         when(catalog.findPublished("notion"))
                 .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
-                        "notion", "N", "d", Map.of(), 1, Map.of("default", true))));
+                        "notion", "N", "d", Map.of(), 1, Map.of("default", true), "http://mcp-notion:8091/v1/notion", "http")));
         when(installations.findByWorkspaceAndConnector(wsId, "notion")).thenReturn(Optional.empty());
         when(formSplitter.split(any(), any()))
                 .thenReturn(new ConnectionFormSplitter.SplitResult(Map.of(), Map.of()));
@@ -579,7 +627,7 @@ class InstallationServiceTest {
     void createStripsBlankNotionDatabaseId() throws Exception {
         when(catalog.findPublished("notion"))
                 .thenReturn(Optional.of(new CatalogRepository.CatalogRow(
-                        "notion", "N", "d", Map.of(), 1, Map.of())));
+                        "notion", "N", "d", Map.of(), 1, Map.of(), "http://mcp-notion:8091/v1/notion", "http")));
         when(installations.findByWorkspaceAndConnector(wsId, "notion")).thenReturn(Optional.empty());
         when(formSplitter.split(any(), any()))
                 .thenReturn(new ConnectionFormSplitter.SplitResult(Map.of(), Map.of("default_database_id", "   ")));

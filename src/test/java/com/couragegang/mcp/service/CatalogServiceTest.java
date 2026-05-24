@@ -35,7 +35,7 @@ class CatalogServiceTest {
         when(catalog.listPublished())
                 .thenReturn(
                         List.of(
-                                new CatalogRow("notion", "Notion", "d", Map.of(), 1, Map.of())));
+                                new CatalogRow("notion", "Notion", "d", Map.of(), 1, Map.of(), null, "http")));
 
         var res = svc.list();
 
@@ -53,7 +53,7 @@ class CatalogServiceTest {
     @Test
     void getByKey() throws Exception {
         when(catalog.findPublished("notion"))
-                .thenReturn(Optional.of(new CatalogRow("notion", "Notion", "d", Map.of("f", 1), 2, Map.of())));
+                .thenReturn(Optional.of(new CatalogRow("notion", "Notion", "d", Map.of("f", 1), 2, Map.of(), null, "http")));
 
         var tool = svc.get("notion");
 
