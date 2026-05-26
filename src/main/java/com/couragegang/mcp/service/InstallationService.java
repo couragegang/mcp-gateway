@@ -260,7 +260,7 @@ public final class InstallationService {
     }
 
     private Map<String, Object> mergeConfig(Map<String, Object> connectionConfig, String secretRef) {
-        var merged = new HashMap<>(connectionConfig);
+        var merged = new HashMap<>(connectionConfig != null ? connectionConfig : Map.of());
         secrets.resolvePayload(secretRef).forEach(merged::putIfAbsent);
         return merged;
     }
